@@ -1,62 +1,67 @@
-import os
+import json
 
 import google.generativeai as genai
-from dotenv import load_dotenv
+from fastapi import HTTPException
 
-# Load environment variables
-load_dotenv()
+from app.config import settings
 
-# Configure Gemini API
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+# Configure Gemini
+genai.configure(api_key=settings.GEMINI_API_KEY)
 
-# Initialize Gemini model
-model = genai.GenerativeModel(
-    os.getenv("GEMINI_MODEL")
-)
+# Load Gemini Model
+model = genai.GenerativeModel(settings.GEMINI_MODEL)
 
 
-def analyze_resume(resume_text):
+def analyze_resume(resume_text: str) -> dict:
     """
-    Analyze a resume using Gemini AI and return recruiter-style feedback.
+    Generates a structured AI resume review using Google Gemini.
     """
 
     prompt = f"""
-You are an experienced Senior Technical Recruiter with over 15 years of hiring experience.
+You are an experienced Senior Technical Recruiter.
 
-Analyze the following resume like a real recruiter.
+Analyze the following resume carefully.
 
-Provide your response using the following sections.
+Return ONLY valid JSON.
 
-## 1. Overall Resume Score
-Give a score out of 100.
+Do not return markdown.
+Do not wrap the JSON inside triple backticks.
+Do not include any explanation before or after the JSON.
 
-## 2. ATS Compatibility Score
-Give an ATS score out of 100 and briefly explain it.
+Use this exact JSON structure:
 
-## 3. Recruiter's First Impression
-Describe what you think within the first 30 seconds of reading the resume.
+{{
+    "resume_score": 0,
+    "ats_score": 0,
+    "recruiter_confidence": 0,
+    "first_impression": "",
+    "assessment": "",
+    "strengths": [],
+    "weaknesses": [],
+    "missing_skills": [],
+    "ats_observations": [],
+    "top_improvements": []
+}}
 
-## 4. Strengths
-List the strongest points of the resume.
+Scoring Guidelines:
 
-## 5. Weaknesses
-List the biggest weaknesses that may reduce interview chances.
+Resume Score:
+- Overall quality of the resume.
+- Education
+- Skills
+- Projects
+- Resume writing
+- Formatting
+- Professionalism
 
-## 6. Missing Skills
-Mention important technical or soft skills that are missing.
+ATS Score:
+- Keyword relevance
+- ATS-friendly formatting
+- Section organization
+- Technical keyword coverage
 
-## 7. Top 5 Resume Improvements
-Provide five practical suggestions that would significantly improve this resume.
-
-## 8. Recruiter Verdict
-Choose ONE of the following:
-
-- Strong Hire
-- Hire
-- Consider
-- Reject
-
-Explain your decision in 2–3 sentences.
+Recruiter's Confidence:
+- How confident you are in this evaluation (0-100).
 
 Resume:
 
@@ -65,7 +70,28 @@ Resume:
 
     try:
         response = model.generate_content(prompt)
-        return response.text
+
+        cleaned_response = response.text.strip()
+
+        # Remove markdown formatting if Gemini returns it
+        if cleaned_response.startswith("```json"):
+            cleaned_response = cleaned_response.replace("```json", "", 1)
+
+        if cleaned_response.endswith("```"):
+            cleaned_response = cleaned_response[:-3]
+
+        cleaned_response = cleaned_response.strip()
+
+        return json.loads(cleaned_response)
+
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=500,
+            detail="Gemini returned an invalid JSON response."
+        )
 
     except Exception as e:
-        return f"Error while analyzing resume: {str(e)}"
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate AI resume review: {str(e)}"
+        )
