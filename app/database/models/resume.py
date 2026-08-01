@@ -1,5 +1,6 @@
-from sqlalchemy import Column, DateTime, Integer, String
-from datetime import datetime, UTC
+from datetime import UTC, datetime
+
+from sqlalchemy import Column, DateTime, Integer, String, Text
 
 from app.database.database import Base
 
@@ -18,8 +19,18 @@ class Resume(Base):
         default=lambda: datetime.now(UTC)
     )
 
+    # Scores
     resume_score = Column(Integer)
-
     ats_score = Column(Integer)
-
     recruiter_confidence = Column(Integer)
+
+    # Recruiter Review
+    first_impression = Column(Text)
+    assessment = Column(Text)
+
+    # Stored as JSON strings
+    strengths = Column(Text)
+    weaknesses = Column(Text)
+    missing_skills = Column(Text)
+    ats_observations = Column(Text)
+    top_improvements = Column(Text)
