@@ -1,11 +1,14 @@
 from datetime import datetime, UTC
 
-from fastapi import APIRouter, UploadFile, File
+from fastapi import APIRouter, Depends, File, UploadFile
+from sqlalchemy.orm import Session
 
+from app.database.database import get_db
 from app.schemas.resume_review import ResumeUploadResponse
+from app.services.database_service import save_resume
 from app.services.file_service import save_uploaded_file
-from app.services.pdf_service import extract_text_from_pdf
 from app.services.gemini_service import analyze_resume
+from app.services.pdf_service import extract_text_from_pdf
 
 router = APIRouter()
 
@@ -21,22 +24,34 @@ def test_resume():
     "/upload",
     response_model=ResumeUploadResponse
 )
-async def upload_resume(file: UploadFile = File(...)):
+async def upload_resume(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
     """
-    Upload a resume, extract text, analyze it using AI,
-    and return a structured resume review.
+    Upload a resume, analyze it using AI,
+    save the result into the database,
+    and return the review.
     """
 
-    # Save uploaded file
+    # Save uploaded PDF
     file_path, unique_filename = save_uploaded_file(file)
 
-    # Extract text from PDF
+    # Extract text
     resume_text = extract_text_from_pdf(file_path)
 
-    # Generate AI Resume Review
+    # AI Analysis
     resume_review = analyze_resume(resume_text)
 
-    # Return structured response
+    # Save into SQLite database
+    save_resume(
+        db=db,
+        original_filename=file.filename,
+        saved_filename=unique_filename,
+        resume_review=resume_review
+    )
+
+    # Return API response
     return {
         "message": "Resume uploaded successfully!",
         "original_filename": file.filename,

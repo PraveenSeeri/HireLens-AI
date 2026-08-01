@@ -1,5 +1,10 @@
 from fastapi import FastAPI
+
 from app.api.resume import router as resume_router
+
+# Database Imports
+from app.database.database import Base, engine
+from app.database.models.resume import Resume
 
 app = FastAPI(
     title="HireLens AI",
@@ -7,7 +12,15 @@ app = FastAPI(
     version="1.0.0"
 )
 
-app.include_router(resume_router, prefix="/resume", tags=["Resume"])
+# Create all database tables
+Base.metadata.create_all(bind=engine)
+
+app.include_router(
+    resume_router,
+    prefix="/resume",
+    tags=["Resume"]
+)
+
 
 @app.get(
     "/",
