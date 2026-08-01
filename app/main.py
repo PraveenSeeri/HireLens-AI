@@ -1,12 +1,24 @@
 from fastapi import FastAPI
+from app.api.resume import router as resume_router
 
 app = FastAPI(
-    title="AI Resume Analyzer",
-    description="An AI-powered application to analyze resumes and provide feedback.",
+    title="HireLens AI",
+    description="See your resume through a recruiter's eyes using AI-powered recruiter simulation, ATS analysis, interview prediction, and career insights.",
     version="1.0.0"
 )
 
+app.include_router(resume_router, prefix="/resume", tags=["Resume"])
 
-@app.get("/")
+@app.get(
+    "/",
+    tags=["Home"],
+    summary="Welcome to HireLens AI"
+)
 def home():
-    return {"message": "Welcome to AI Resume Analyzer!"}
+    return {
+        "title": "👋 Welcome to HireLens AI",
+        "subtitle": "Your Personal AI Recruiter",
+        "tagline": "See Your Resume Through a Recruiter's Eyes.",
+        "description": "Upload your resume and experience how recruiters evaluate candidates in the first 30 seconds.",
+        "version": "1.0.0"
+    }
