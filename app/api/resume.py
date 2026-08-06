@@ -1,17 +1,23 @@
 import json
 from datetime import UTC, datetime
+from app.schemas.job_match import JobMatchResponse
+from app.services.job_match_service import analyze_job_match
 
 from fastapi import (
     APIRouter,
     Depends,
     File,
+    Form,
     HTTPException,
     UploadFile,
 )
+
 from sqlalchemy.orm import Session
 
 from app.database.database import get_db
 
+from app.auth.models import User
+from app.auth.utils import get_current_user
 from app.schemas.comparison import ResumeComparison
 from app.schemas.history import (
     ResumeDetail,
@@ -53,13 +59,17 @@ def test_resume():
     response_model=list[ResumeHistoryItem]
 )
 def resume_history(
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
-    Get all uploaded resumes.
+    Get all uploaded resumes of the logged-in user.
     """
 
-    resumes = get_all_resumes(db)
+    resumes = get_all_resumes(
+        db,
+        current_user,
+    )
 
     return [
         {
@@ -80,14 +90,17 @@ def resume_history(
     response_model=ResumeStats
 )
 def resume_stats(
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
-    Dashboard statistics.
+    Dashboard statistics for the logged-in user.
     """
 
-    return get_resume_statistics(db)
-
+    return get_resume_statistics(
+        db,
+        current_user,
+    )
 
 @router.get(
     "/{resume_id}",
@@ -95,17 +108,18 @@ def resume_stats(
 )
 def get_resume(
     resume_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Get one resume.
     """
 
     resume = get_resume_by_id(
-        db,
-        resume_id
+    db,
+    resume_id,
+    current_user,
     )
-
     if resume is None:
         raise HTTPException(
             status_code=404,
@@ -137,20 +151,23 @@ def get_resume(
 def compare_resume_versions(
     old_id: int,
     new_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
-    Compare two resumes.
+    Compare two resumes belonging to the logged-in user.
     """
 
     old_resume = get_resume_by_id(
         db,
-        old_id
+        old_id,
+        current_user,
     )
 
     new_resume = get_resume_by_id(
         db,
-        new_id
+        new_id,
+        current_user,
     )
 
     if old_resume is None:
@@ -174,15 +191,17 @@ def compare_resume_versions(
 @router.delete("/{resume_id}")
 def remove_resume(
     resume_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
-    Delete one resume.
+    Delete one resume belonging to the logged-in user.
     """
 
     resume = delete_resume(
         db,
-        resume_id
+        resume_id,
+        current_user,
     )
 
     if resume is None:
@@ -195,6 +214,93 @@ def remove_resume(
         "message": "Resume deleted successfully."
     }
 
+@router.post(
+    "/compare-upload",
+    response_model=ResumeComparison,
+)
+async def compare_uploaded_resume(
+    resume_id: int = Form(...),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Compare an existing stored resume with a newly uploaded resume.
+    The uploaded resume is analyzed but NOT saved.
+    """
+
+    old_resume = get_resume_by_id(
+        db,
+        resume_id,
+        current_user,
+    )
+
+    if old_resume is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Resume not found.",
+        )
+
+    # Save uploaded file temporarily
+    file_path, _ = save_uploaded_file(file)
+
+    # Extract text
+    resume_text = extract_text_from_pdf(file_path)
+
+    # Analyze uploaded resume
+    new_review = analyze_resume(resume_text)
+
+    # Temporary object for comparison
+    class TempResume:
+        pass
+
+    new_resume = TempResume()
+
+    new_resume.id = 0
+    new_resume.resume_score = new_review["resume_score"]
+    new_resume.ats_score = new_review["ats_score"]
+    new_resume.recruiter_confidence = new_review["recruiter_confidence"]
+
+    new_resume.strengths = json.dumps(
+        new_review["strengths"]
+    )
+
+    new_resume.weaknesses = json.dumps(
+        new_review["weaknesses"]
+    )
+
+    return compare_resumes(
+        old_resume,
+        new_resume,
+    )
+@router.post(
+    "/job-match",
+    response_model=JobMatchResponse,
+)
+async def job_match(
+    file: UploadFile = File(...),
+    job_description: str = Form(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Compare a resume against a job description.
+    """
+
+    # Save uploaded PDF
+    file_path, _ = save_uploaded_file(file)
+
+    # Extract resume text
+    resume_text = extract_text_from_pdf(file_path)
+
+    # AI analysis
+    result = analyze_job_match(
+        resume_text=resume_text,
+        job_description=job_description,
+    )
+
+    return result    
+
 
 @router.post(
     "/upload",
@@ -202,7 +308,8 @@ def remove_resume(
 )
 async def upload_resume(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Upload, analyze and save a resume.
@@ -216,6 +323,7 @@ async def upload_resume(
 
     save_resume(
         db=db,
+        user=current_user,
         original_filename=file.filename,
         saved_filename=unique_filename,
         resume_review=resume_review,

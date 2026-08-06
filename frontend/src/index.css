@@ -1,0 +1,30 @@
+@import "tailwindcss";
+
+/* Enable smooth color transitions */
+
+* {
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease,
+    border-color 0.25s ease;
+}
+
+/* Light Theme */
+
+:root {
+  color-scheme: light;
+}
+
+/* Dark Theme */
+
+.dark {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-slate-100 text-slate-900;
+}
+
+.dark body {
+  @apply bg-slate-950 text-slate-100;
+}

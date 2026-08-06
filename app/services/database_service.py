@@ -2,20 +2,24 @@ import json
 
 from sqlalchemy.orm import Session
 
+from app.auth.models import User
 from app.database.models.resume import Resume
 
 
 def save_resume(
     db: Session,
+    user: User,
     original_filename: str,
     saved_filename: str,
-    resume_review: dict
+    resume_review: dict,
 ):
     """
     Save complete AI review into database.
     """
 
     resume = Resume(
+        user_id=user.id,
+
         original_filename=original_filename,
         saved_filename=saved_filename,
 
@@ -40,13 +44,17 @@ def save_resume(
     return resume
 
 
-def get_all_resumes(db: Session):
+def get_all_resumes(
+    db: Session,
+    user: User,
+):
     """
-    Get all resumes.
+    Get all resumes uploaded by the logged-in user.
     """
 
     return (
         db.query(Resume)
+        .filter(Resume.user_id == user.id)
         .order_by(Resume.generated_at.desc())
         .all()
     )
@@ -54,30 +62,36 @@ def get_all_resumes(db: Session):
 
 def get_resume_by_id(
     db: Session,
-    resume_id: int
+    resume_id: int,
+    user: User,
 ):
     """
-    Get one resume.
+    Get a specific resume belonging to the logged-in user.
     """
 
     return (
         db.query(Resume)
-        .filter(Resume.id == resume_id)
+        .filter(
+            Resume.id == resume_id,
+            Resume.user_id == user.id,
+        )
         .first()
     )
 
 
 def delete_resume(
     db: Session,
-    resume_id: int
+    resume_id: int,
+    user: User,
 ):
     """
-    Delete resume.
+    Delete a resume belonging to the logged-in user.
     """
 
     resume = get_resume_by_id(
-        db,
-        resume_id
+        db=db,
+        resume_id=resume_id,
+        user=user,
     )
 
     if resume is None:
